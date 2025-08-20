@@ -2,3 +2,5 @@ streamlit
 sentence-transformers
 scikit-learn
 pdfminer.six
+transformers
+torch
