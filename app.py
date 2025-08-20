@@ -3,17 +3,20 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import pdfminer.high_level
 import io
+from transformers import pipeline
 
-# ------------------ Load Model ------------------
+# ------------------ Load Models ------------------
 @st.cache_resource
-def load_model():
-    return SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+def load_models():
+    embedder = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    summarizer = pipeline("text2text-generation", model="google/flan-t5-small")
+    return embedder, summarizer
 
-model = load_model()
+embedder, summarizer = load_models()
 
 # ------------------ Streamlit UI ------------------
-st.set_page_config(page_title="Plagiarism Checker", layout="wide")
-st.title("📄 Plagiarism Detection System")
+st.set_page_config(page_title="AI Plagiarism Checker", layout="wide")
+st.title("📄 AI-Powered Plagiarism Detection System")
 st.write("Upload a document to check for plagiarism (semantic + multilingual).")
 
 # Threshold slider
@@ -34,7 +37,7 @@ if uploaded_file:
     if len(sentences) < 2:
         st.warning("Not enough text to analyze plagiarism.")
     else:
-        embeddings = model.encode(sentences)
+        embeddings = embedder.encode(sentences)
         sim_matrix = cosine_similarity(embeddings)
 
         # ------------------ Plagiarism Detection ------------------
@@ -52,14 +55,23 @@ if uploaded_file:
         st.write(f"**Plagiarized Pairs Found:** {len(plagiarized)}")
         st.write(f"**Plagiarism Percentage:** {plag_percent:.2f}%")
 
+        st.progress(min(int(plag_percent), 100))
+
         st.markdown("---")
 
-        # Highlight sentences
         for s1, s2, score in plagiarized:
             st.markdown(f"<p style='color:red;'>⚠️ Sentence 1: {s1}</p>", unsafe_allow_html=True)
             st.markdown(f"<p style='color:orange;'>➡️ Sentence 2: {s2}</p>", unsafe_allow_html=True)
             st.markdown(f"🔗 Similarity Score: **{score:.2f}**")
             st.write("---")
+
+        # ------------------ LLM Explanation ------------------
+        if plagiarized:
+            st.subheader("🧠 AI Explanation & Suggestions")
+            joined_text = " ".join([f"Sentence 1: {s1} | Sentence 2: {s2}" for s1, s2, _ in plagiarized[:3]])
+            explanation = summarizer(f"Explain why these sentences may be plagiarized and suggest rephrasing: {joined_text}",
+                                     max_length=150, min_length=30, do_sample=False)
+            st.write(explanation[0]["generated_text"])
 
         # ------------------ Downloadable Report ------------------
         if plagiarized:
